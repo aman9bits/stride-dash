@@ -20,9 +20,8 @@ function buildEchoLines(c?: CandidateProfile): string[][] {
 
   // Line 1 — role + company type
   const role = c.current_role_title ?? 'Your role'
-  const companyType = c.current_company_type
-    ? { startup: 'startup', product: 'product company', mnc: 'MNC', service_co: 'service company', unknown: '' }[c.current_company_type] ?? ''
-    : ''
+  const companyTypeMap: Record<string, string> = { startup: 'startup', product: 'product company', mnc: 'MNC', service_co: 'service company', unknown: '' }
+  const companyType = c.current_company_type ? (companyTypeMap[c.current_company_type] ?? '') : ''
   lines.push([role + (c.current_company ? ` at ${c.current_company}` : ''), companyType ? `· ${companyType}` : ''])
 
   // Line 2 — experience + location
@@ -38,13 +37,13 @@ function buildEchoLines(c?: CandidateProfile): string[][] {
   }
 
   // Line 4 — target company type + role type
+  const coTypeMap: Record<string, string> = { startup: 'Startups', product: 'Funded scaleups', mnc: 'Large tech / MNC', service_co: 'Services', any: 'Any company', unknown: '' }
   const targetCo = c.target_company_types?.length
-    ? c.target_company_types.map(t => ({
-        startup: 'Startups', product: 'Funded scaleups', mnc: 'Large tech / MNC', service_co: 'Services', any: 'Any company',
-      }[t] ?? t)).join(', ')
+    ? c.target_company_types.map(t => coTypeMap[t] ?? t).filter(Boolean).join(', ')
     : null
+  const roleTypeMap: Record<string, string> = { ic: 'IC', manager: 'Manager', both: 'IC or Manager' }
   const roleType = c.target_role_type
-    ? { ic: 'IC', manager: 'Manager', both: 'IC or Manager' }[c.target_role_type] ?? null
+    ? roleTypeMap[c.target_role_type] ?? null
     : null
   if (targetCo || roleType) {
     lines.push([targetCo ?? '', roleType ? `· ${roleType}` : ''])
@@ -214,11 +213,15 @@ export default function GeneratingState({ candidateId, candidate }: Props) {
             </div>
             <div className="text-[14px] leading-relaxed mb-6" style={{ color: 'var(--text-2)' }}>
               {candidate?.target_company_types?.length || candidate?.salary_floor_lpa
-                ? `Prioritising ${[
-                    candidate?.target_company_types?.map(t => ({ startup: 'startups', product: 'funded scaleups', mnc: 'large tech', service_co: 'services', any: 'all companies' }[t])).filter(Boolean).join(', '),
-                    candidate?.salary_floor_lpa ? `roles above ₹${candidate.salary_floor_lpa}L` : null,
-                    candidate?.current_location ? `in ${candidate.current_location}` : null,
-                  ].filter(Boolean).join(' · ')}.`
+                ? (() => {
+                    const labelMap: Record<string, string> = { startup: 'startups', product: 'funded scaleups', mnc: 'large tech', service_co: 'services', any: 'all companies', unknown: '' }
+                    const parts = [
+                      candidate?.target_company_types?.map(t => labelMap[t] ?? t).filter(Boolean).join(', '),
+                      candidate?.salary_floor_lpa ? `roles above ₹${candidate.salary_floor_lpa}L` : null,
+                      candidate?.current_location ? `in ${candidate.current_location}` : null,
+                    ].filter(Boolean).join(' · ')
+                    return `Prioritising ${parts}.`
+                  })()
                 : 'Ranking the best matches for your profile…'
               }
             </div>
