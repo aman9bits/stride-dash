@@ -13,7 +13,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.4",
-    "next": "15.3.2",
+    "next": "15.3.8",
     "posthog-js": "^1.240.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
