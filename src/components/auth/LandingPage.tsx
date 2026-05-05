@@ -4,8 +4,8 @@ import { createClient } from '@/lib/supabase/client'
 import { track } from '@/lib/posthog'
 
 interface Props {
-  email: string
-  token: string
+  email: string | null
+  token: string | null
 }
 
 export default function LandingPage({ email, token }: Props) {
@@ -16,18 +16,19 @@ export default function LandingPage({ email, token }: Props) {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?state=${token}`,
-        queryParams: { login_hint: email },
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback${token ? `?state=${token}` : ''}`,
+        ...(email ? { queryParams: { login_hint: email } } : {}),
       },
     })
   }
 
   async function handleMagicLink() {
+    if (!email) return
     track('auth_started', { method: 'magic_link' })
     await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?state=${token}`,
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback${token ? `?state=${token}` : ''}`,
       },
     })
     alert(`Check ${email} for your sign-in link.`)
@@ -66,16 +67,18 @@ export default function LandingPage({ email, token }: Props) {
             Continue with Google
           </button>
 
-          <button
-            onClick={handleMagicLink}
-            className="w-full text-center text-sm text-gray-500 py-2 active:text-gray-700"
-          >
-            Use email instead ({email})
-          </button>
+          {email && (
+            <button
+              onClick={handleMagicLink}
+              className="w-full text-center text-sm text-gray-500 py-2 active:text-gray-700"
+            >
+              Use email instead ({email})
+            </button>
+          )}
         </div>
 
         <p className="mt-8 text-xs text-gray-400 text-center">
-          Private pilot for Shine Learning community.
+          Stride Dash · Early access
         </p>
       </div>
     </div>

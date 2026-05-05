@@ -7,7 +7,7 @@ export default async function RootPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    redirect('/invite/start') // generic landing if no invite token
+    redirect('/login')
   }
 
   // Check onboarding state
