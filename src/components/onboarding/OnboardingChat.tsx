@@ -11,7 +11,7 @@ const TURNS = [
   {
     number: 1,
     question: "Before anything else — what's the situation that's got you looking right now?",
-    placeholder: "Tell me what's going on...",
+    placeholder: "My manager blocks everything I try to ship…",
     inputType: 'textarea' as const,
   },
   {
@@ -28,16 +28,16 @@ const TURNS = [
   },
   {
     number: 4,
-    question: (currentCity: string) =>
-      `Where are you looking to work? Staying in ${currentCity || 'your city'}, open to relocating, or is remote or hybrid on the table?`,
+    question: (city: string) =>
+      `Where are you looking to work? Staying in ${city || 'your city'}, open to relocating, or is remote or hybrid on the table?`,
     placeholder: "e.g. Bangalore only, open to hybrid",
     inputType: 'text' as const,
   },
   {
     number: 5,
-    question: "What kind of company are you targeting — product startups, funded scaleups, large tech? And are you looking to manage a team, operate more independently, or a mix?",
-    placeholder: "e.g. Product startups or Series B-D, want to manage a small team",
-    inputType: 'textarea' as const,
+    question: "What kind of company are you targeting? And manage a team or fly solo?",
+    placeholder: "Or add anything the chips don't cover…",
+    inputType: 'chips' as const,
   },
   {
     number: 6,
@@ -47,20 +47,29 @@ const TURNS = [
   },
 ]
 
-interface Message {
-  role: 'system' | 'user' | 'clarification'
-  content: string
-}
+const COMPANY_CHIPS = [
+  { label: 'Product startup', value: 'startup' },
+  { label: 'Funded scaleup', value: 'product' },
+  { label: 'Large tech / MNC', value: 'mnc' },
+  { label: 'Open to all', value: 'any' },
+]
 
-interface Props {
-  candidate: CandidateProfile
-}
+const ROLE_CHIPS = [
+  { label: 'IC — fly solo', value: 'ic' },
+  { label: 'Manager — lead a team', value: 'manager' },
+  { label: 'Mix of both', value: 'both' },
+]
+
+interface HistoryItem { question: string; answer: string }
+interface Props { candidate: CandidateProfile }
 
 export default function OnboardingChat({ candidate }: Props) {
   const router = useRouter()
-  const [messages, setMessages] = useState<Message[]>([])
-  const [currentTurn, setCurrentTurn] = useState(candidate.onboarding_turn + 1)
+  const [history, setHistory] = useState<HistoryItem[]>([])
+  const [currentTurn, setCurrentTurn] = useState(1)
   const [inputValue, setInputValue] = useState('')
+  const [selectedCompany, setSelectedCompany] = useState<string[]>([])
+  const [selectedRole, setSelectedRole] = useState<string>('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [profileFields, setProfileFields] = useState<Partial<CandidateProfile>>({})
   const [awaitingClarification, setAwaitingClarification] = useState<{
@@ -70,52 +79,73 @@ export default function OnboardingChat({ candidate }: Props) {
     systemQuestion: string
   } | null>(null)
   const [sessionId] = useState(() => crypto.randomUUID())
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
 
-  // Send first question on mount
-  useEffect(() => {
-    const turn = TURNS[0]
-    setMessages([{ role: 'system', content: turn.question as string }])
-    track('onboarding_started')
-  }, [])
+  useEffect(() => { track('onboarding_started') }, [])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    inputRef.current?.focus()
-  }, [messages])
+    bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' })
+  }, [history, awaitingClarification])
 
-  function getCurrentTurnDef() {
-    return TURNS[currentTurn - 1]
-  }
-
-  function getQuestion(turn: typeof TURNS[0]): string {
+  function getCurrentQuestion(): string {
+    const turn = TURNS[currentTurn - 1]
     if (typeof turn.question === 'function') {
       return turn.question(profileFields.current_location ?? '')
     }
     return turn.question
   }
 
-  async function submitResponse(response: string, isClarification = false) {
-    if (!response.trim() || isProcessing) return
+  function buildChipResponse(): string {
+    const parts: string[] = []
+    if (selectedCompany.length > 0) {
+      const labels = selectedCompany.map(v => COMPANY_CHIPS.find(c => c.value === v)?.label ?? v)
+      parts.push(labels.join(', '))
+    }
+    if (selectedRole) {
+      const label = ROLE_CHIPS.find(c => c.value === selectedRole)?.label ?? selectedRole
+      parts.push(label)
+    }
+    if (inputValue.trim()) parts.push(inputValue.trim())
+    return parts.join(' · ')
+  }
+
+  function canSubmit(): boolean {
+    if (isProcessing) return false
+    if (awaitingClarification) return inputValue.trim().length > 0
+    if (currentTurn === 5) return selectedCompany.length > 0 || selectedRole !== '' || inputValue.trim().length > 0
+    return inputValue.trim().length > 0
+  }
+
+  async function submitResponse() {
+    if (!canSubmit()) return
     setIsProcessing(true)
+
+    const response = awaitingClarification
+      ? inputValue.trim()
+      : currentTurn === 5
+        ? buildChipResponse()
+        : inputValue.trim()
+
+    const systemQuestion = awaitingClarification
+      ? awaitingClarification.systemQuestion
+      : getCurrentQuestion()
+
+    if (!awaitingClarification) {
+      setHistory(prev => [...prev, { question: systemQuestion, answer: response }])
+    }
+
     setInputValue('')
+    setSelectedCompany([])
+    setSelectedRole('')
 
-    const turn = TURNS[currentTurn - 1]
-    const systemQuestion = getQuestion(turn)
-
-    // Add user message
-    setMessages(prev => [...prev, { role: 'user', content: response }])
-
-    // Parse the response
     const parsePayload = {
       candidate_id: candidate.candidate_id,
       session_id: sessionId,
       turn_number: currentTurn,
-      system_question: isClarification ? awaitingClarification!.systemQuestion : systemQuestion,
-      candidate_response: isClarification ? awaitingClarification!.originalResponse : response,
-      clarification_sent: isClarification ? awaitingClarification!.clarificationPrompt : undefined,
-      clarification_response: isClarification ? response : undefined,
+      system_question: systemQuestion,
+      candidate_response: awaitingClarification ? awaitingClarification.originalResponse : response,
+      clarification_sent: awaitingClarification ? awaitingClarification.clarificationPrompt : undefined,
+      clarification_response: awaitingClarification ? response : undefined,
       prior_context: profileFields,
     }
 
@@ -126,26 +156,21 @@ export default function OnboardingChat({ candidate }: Props) {
     })
     const parsed = await parseRes.json()
 
-    // If clarification needed and not already in clarification flow
-    if (parsed.needs_clarification && !isClarification) {
+    if (parsed.needs_clarification && !awaitingClarification) {
       setAwaitingClarification({
         clarificationPrompt: parsed.clarification_prompt,
         originalResponse: response,
         turnNumber: currentTurn,
         systemQuestion,
       })
-      setMessages(prev => [...prev, { role: 'clarification', content: parsed.clarification_prompt }])
       setIsProcessing(false)
       return
     }
 
     setAwaitingClarification(null)
-
-    // Merge extracted fields
     const newFields = { ...profileFields, ...parsed.extracted }
     setProfileFields(newFields)
 
-    // Save to DB
     const isLastTurn = currentTurn === 6
     await fetch('/api/onboarding/save', {
       method: 'POST',
@@ -158,44 +183,20 @@ export default function OnboardingChat({ candidate }: Props) {
       }),
     })
 
-    track('onboarding_turn_completed', {
-      turn_number: currentTurn,
-      fields_captured: Object.keys(parsed.extracted ?? {}),
-    })
+    track('onboarding_turn_completed', { turn_number: currentTurn })
 
     if (isLastTurn) {
-      // Show summary (Turn 7)
       await showSummary(newFields)
       return
     }
 
-    // Advance to next turn
-    const nextTurn = TURNS[currentTurn]
-    const nextQuestion = typeof nextTurn.question === 'function'
-      ? nextTurn.question(newFields.current_location ?? '')
-      : nextTurn.question
-
-    setTimeout(() => {
-      setMessages(prev => [...prev, { role: 'system', content: nextQuestion }])
-      setCurrentTurn(prev => prev + 1)
-      setIsProcessing(false)
-    }, 400)
+    setCurrentTurn(prev => prev + 1)
+    setIsProcessing(false)
   }
 
   async function showSummary(fields: Partial<CandidateProfile>) {
-    const summary = `Here's what I've got from you. Let me know if anything looks off.
-
-**You:** ${fields.current_role_title ?? '—'}, ${fields.total_experience_years ?? '—'} years, based in ${fields.current_location ?? '—'}.
-**Looking for:** ${(fields.target_company_types ?? []).join(', ')} companies, ${fields.target_role_type ?? '—'} role in ${(fields.location_preference ?? []).join(', ') || '—'}.
-**Floor:** ₹${fields.salary_floor_lpa ?? '—'}L+
-**What's driving the search:** ${fields.what_is_broken ?? '—'}
-
-I'm generating your first 3 matches now.`
-
-    setMessages(prev => [...prev, { role: 'system', content: summary }])
     setCurrentTurn(7)
 
-    // Complete onboarding and trigger matching
     await fetch('/api/onboarding/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -209,7 +210,6 @@ I'm generating your first 3 matches now.`
 
     track('onboarding_completed', { total_turns: 7 })
 
-    // Trigger matching run
     await fetch('/api/matching/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -217,108 +217,189 @@ I'm generating your first 3 matches now.`
     })
 
     track('first_recommendations_viewed')
-
-    setTimeout(() => router.push('/home'), 2000)
+    setTimeout(() => router.push('/home'), 1500)
     setIsProcessing(false)
   }
 
-  const turnDef = getCurrentTurnDef()
-  const inputType = turnDef?.inputType ?? 'text'
+  const turnDef = TURNS[currentTurn - 1]
+
+  // ─── Summary / loading screen ──────────────────────────────────────────────
+  if (currentTurn === 7) {
+    return (
+      <div className="min-h-screen flex flex-col max-w-[430px] mx-auto" style={{ background: 'var(--bg)' }}>
+        <div className="px-6 pt-5">
+          <div className="text-[10px] font-extrabold tracking-[0.22em] uppercase" style={{ color: 'var(--accent)' }}>
+            Stride Dash
+          </div>
+        </div>
+        <div className="px-6 pt-5">
+          <div className="text-[22px] font-extrabold tracking-tight" style={{ color: 'var(--text-1)' }}>
+            Here's what I've got.
+          </div>
+          <div className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>Finding your matches now…</div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex gap-1.5">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="w-2 h-2 rounded-full animate-bounce"
+                style={{ background: 'var(--accent)', animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen flex flex-col bg-white max-w-lg mx-auto">
-      {/* Header */}
-      <div className="px-4 pt-6 pb-2 border-b border-gray-100">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-gray-900">Stride Dash</span>
-          {currentTurn <= 6 && (
-            <span className="text-xs text-gray-400">{currentTurn} of 6</span>
-          )}
+    <div className="min-h-screen flex flex-col max-w-[430px] mx-auto" style={{ background: 'var(--bg)' }}>
+      {/* Wordmark */}
+      <div className="px-6 pt-5 pb-1 flex-shrink-0">
+        <div className="text-[10px] font-extrabold tracking-[0.22em] uppercase" style={{ color: 'var(--accent)' }}>
+          Stride Dash
         </div>
-        {currentTurn <= 6 && (
-          <div className="mt-2 h-1 bg-gray-100 rounded-full">
-            <div
-              className="h-1 bg-gray-900 rounded-full transition-all duration-500"
-              style={{ width: `${(currentTurn / 6) * 100}%` }}
-            />
-          </div>
-        )}
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
-              msg.role === 'user'
-                ? 'bg-gray-900 text-white rounded-br-sm'
-                : msg.role === 'clarification'
-                ? 'bg-blue-50 text-blue-900 rounded-bl-sm border border-blue-100'
-                : 'bg-gray-100 text-gray-900 rounded-bl-sm'
-            }`}>
-              {msg.content}
+      {/* Scrollable body */}
+      <div ref={bodyRef} className="flex-1 overflow-y-auto no-scrollbar px-6 py-4 flex flex-col">
+        {/* Past turns history */}
+        {history.length > 0 && (
+          <div className="flex flex-col gap-4 pb-6 mb-6" style={{ borderBottom: '1px solid var(--border)' }}>
+            {history.map((item, i) => (
+              <div key={i}>
+                <div className="text-[11px] font-medium mb-0.5 leading-snug" style={{ color: 'var(--text-3)' }}>
+                  {item.question}
+                </div>
+                <div className="text-[13px] leading-snug" style={{ color: 'var(--text-2)' }}>
+                  {item.answer}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Clarification prompt */}
+        {awaitingClarification && (
+          <div className="mb-5 p-4 rounded-2xl" style={{ background: 'var(--surface)', border: '1px solid var(--border-b)' }}>
+            <div className="text-sm leading-relaxed" style={{ color: 'var(--text-2)' }}>
+              {awaitingClarification.clarificationPrompt}
             </div>
           </div>
-        ))}
-        {isProcessing && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
-              <div className="flex gap-1">
-                {[0, 1, 2].map(i => (
-                  <div key={i} className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                    style={{ animationDelay: `${i * 0.15}s` }} />
-                ))}
+        )}
+
+        {/* Current question */}
+        {!awaitingClarification && (
+          <div className="text-[24px] font-extrabold leading-tight mb-4"
+            style={{ color: 'var(--text-1)', letterSpacing: '-0.025em' }}>
+            {getCurrentQuestion()}
+          </div>
+        )}
+
+        {/* Chips — turn 5 only */}
+        {!awaitingClarification && currentTurn === 5 && (
+          <div className="flex flex-col gap-5 mb-4">
+            <div>
+              <div className="text-[10px] font-bold tracking-[0.12em] uppercase mb-2.5" style={{ color: 'var(--text-3)' }}>
+                Company type
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {COMPANY_CHIPS.map(chip => {
+                  const active = selectedCompany.includes(chip.value)
+                  return (
+                    <button key={chip.value}
+                      onClick={() => setSelectedCompany(prev =>
+                        active ? prev.filter(v => v !== chip.value) : [...prev, chip.value])}
+                      className="text-[13px] font-medium rounded-full px-4 py-2 border transition-all"
+                      style={{
+                        background: active ? 'var(--accent-dim)' : 'transparent',
+                        borderColor: active ? 'var(--accent)' : 'var(--border-b)',
+                        color: active ? 'var(--accent)' : 'var(--text-2)',
+                      }}>
+                      {chip.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] font-bold tracking-[0.12em] uppercase mb-2.5" style={{ color: 'var(--text-3)' }}>
+                Role type
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {ROLE_CHIPS.map(chip => {
+                  const active = selectedRole === chip.value
+                  return (
+                    <button key={chip.value}
+                      onClick={() => setSelectedRole(prev => prev === chip.value ? '' : chip.value)}
+                      className="text-[13px] font-medium rounded-full px-4 py-2 border transition-all"
+                      style={{
+                        background: active ? 'var(--accent-dim)' : 'transparent',
+                        borderColor: active ? 'var(--accent)' : 'var(--border-b)',
+                        color: active ? 'var(--accent)' : 'var(--text-2)',
+                      }}>
+                      {chip.label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
+
+        {/* Processing indicator */}
+        {isProcessing && (
+          <div className="flex gap-1 mt-2">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce"
+                style={{ background: 'var(--text-3)', animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Input */}
-      {currentTurn <= 6 && (
-        <div className="border-t border-gray-100 px-4 py-3 bg-white">
-          <div className="flex gap-2 items-end">
-            {inputType === 'textarea' ? (
-              <textarea
-                ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    submitResponse(inputValue, !!awaitingClarification)
-                  }
-                }}
-                placeholder={awaitingClarification ? 'Your answer...' : (turnDef?.placeholder ?? '')}
-                rows={3}
-                className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400 bg-gray-50"
-                disabled={isProcessing}
-              />
-            ) : (
-              <input
-                ref={inputRef as React.RefObject<HTMLInputElement>}
-                type="text"
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') submitResponse(inputValue, !!awaitingClarification)
-                }}
-                placeholder={awaitingClarification ? 'Your answer...' : (turnDef?.placeholder ?? '')}
-                className="flex-1 rounded-xl border border-gray-200 px-3 py-3 text-sm focus:outline-none focus:border-gray-400 bg-gray-50"
-                disabled={isProcessing}
-              />
-            )}
-            <button
-              onClick={() => submitResponse(inputValue, !!awaitingClarification)}
-              disabled={!inputValue.trim() || isProcessing}
-              className="bg-gray-900 text-white rounded-xl px-4 py-3 text-sm font-medium disabled:opacity-40 active:scale-95 transition-transform shrink-0"
-            >
-              Send
-            </button>
-          </div>
+      {/* Input area */}
+      <div className="flex-shrink-0 px-4 pb-8 pt-3" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+        <div className="flex gap-2.5 items-end">
+          {turnDef?.inputType !== 'text' ? (
+            <textarea
+              value={inputValue}
+              onChange={e => setInputValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitResponse() } }}
+              placeholder={awaitingClarification ? 'Your answer…' : (turnDef?.placeholder ?? '')}
+              rows={currentTurn === 5 ? 1 : 2}
+              disabled={isProcessing}
+              className="flex-1 resize-none rounded-2xl px-4 py-3 text-sm leading-relaxed outline-none no-scrollbar transition-colors"
+              style={{ background: 'var(--surface)', border: '1px solid var(--border-b)', color: 'var(--text-1)' }}
+              onFocus={e => { e.target.style.borderColor = 'var(--accent)' }}
+              onBlur={e => { e.target.style.borderColor = 'var(--border-b)' }}
+            />
+          ) : (
+            <input
+              type="text"
+              value={inputValue}
+              onChange={e => setInputValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submitResponse() }}
+              placeholder={awaitingClarification ? 'Your answer…' : (turnDef?.placeholder ?? '')}
+              disabled={isProcessing}
+              className="flex-1 rounded-2xl px-4 py-3 text-sm outline-none transition-colors"
+              style={{ background: 'var(--surface)', border: '1px solid var(--border-b)', color: 'var(--text-1)' }}
+              onFocus={e => { e.target.style.borderColor = 'var(--accent)' }}
+              onBlur={e => { e.target.style.borderColor = 'var(--border-b)' }}
+            />
+          )}
+          <button
+            onClick={submitResponse}
+            disabled={!canSubmit()}
+            className="w-[50px] h-[50px] rounded-2xl flex items-center justify-center flex-shrink-0 transition-opacity"
+            style={{ background: canSubmit() ? 'var(--accent)' : 'var(--surface)', opacity: isProcessing ? 0.5 : 1 }}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"
+              stroke={canSubmit() ? '#060C1A' : 'var(--text-3)'}
+              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 10h12M10 4l6 6-6 6"/>
+            </svg>
+          </button>
         </div>
-      )}
+      </div>
     </div>
   )
 }

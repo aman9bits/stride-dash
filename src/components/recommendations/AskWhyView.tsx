@@ -11,59 +11,91 @@ interface Props {
 
 export default function AskWhyView({ rec, job, runnerUp, onClose }: Props) {
   return (
-    <div className="mt-4 border-t border-gray-100 pt-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-semibold text-gray-900 uppercase tracking-wide">How we matched this for you</p>
+    <div className="relative" style={{ borderTop: '1px solid var(--border)' }}>
+      {/* Handle */}
+      <div className="flex justify-center pt-3 pb-1 cursor-pointer" onClick={onClose}>
+        <div className="w-9 h-1 rounded-full" style={{ background: 'var(--border-b)' }} />
+      </div>
+
+      <div className="px-5 pb-6 overflow-y-auto no-scrollbar max-h-[60vh]">
+        <div className="text-[18px] font-extrabold tracking-tight mb-1" style={{ color: 'var(--text-1)', letterSpacing: '-0.02em' }}>
+          Why we picked this for you
+        </div>
+        <div className="text-[13px] mb-5" style={{ color: 'var(--text-3)' }}>
+          {job.company_name ?? 'Company'} · {job.title}
+        </div>
+
+        {/* How we matched */}
+        <div className="text-[10px] font-bold tracking-[0.12em] uppercase mb-2" style={{ color: 'var(--text-3)' }}>
+          How we matched this
+        </div>
+        <p className="text-[13px] leading-relaxed mb-5" style={{ color: 'var(--text-2)' }}>
+          {rec.filter_summary}
+        </p>
+
+        {/* Why bullets */}
+        <div className="flex flex-col gap-4 mb-5">
+          {rec.why_it_fits.map((bullet, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="w-[22px] h-[22px] rounded-full flex-shrink-0 flex items-center justify-center mt-0.5"
+                style={{ background: 'var(--accent-dim)', border: '1px solid rgba(184,255,71,0.2)' }}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                  stroke="var(--accent)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 6l3 3 5-5.5"/>
+                </svg>
+              </div>
+              <div className="text-[14px] leading-relaxed" style={{ color: 'var(--text-1)' }}>{bullet}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Uncertainty */}
+        {rec.uncertainty_flags.length > 0 && (
+          <>
+            <div className="text-[10px] font-bold tracking-[0.12em] uppercase mb-3" style={{ color: 'var(--text-3)' }}>
+              What we're not sure about
+            </div>
+            <div className="flex flex-col gap-2.5 mb-5">
+              {rec.uncertainty_flags.map((flag, i) => (
+                <div key={i} className="flex gap-2.5 rounded-xl p-3"
+                  style={{ background: 'var(--orange-dim)', border: '1px solid rgba(255,140,66,0.18)' }}>
+                  <span className="text-sm flex-shrink-0">⚠</span>
+                  <span className="text-[13px] leading-relaxed" style={{ color: 'var(--text-2)' }}>{flag}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Runner-up */}
+        {runnerUp && runnerUp.runner_up_reason && (
+          <>
+            <div className="text-[10px] font-bold tracking-[0.12em] uppercase mb-3" style={{ color: 'var(--text-3)' }}>
+              Next-closest match we considered
+            </div>
+            <div className="rounded-2xl p-4" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+              <span className="text-[10px] font-bold tracking-[0.08em] uppercase block mb-1.5" style={{ color: 'var(--red)' }}>
+                Ranked lower because →
+              </span>
+              <div className="text-[14px] font-bold mb-1.5" style={{ color: 'var(--text-1)' }}>
+                {runnerUp.job.title}{runnerUp.job.company_name ? ` at ${runnerUp.job.company_name}` : ''}
+              </div>
+              <div className="text-[13px] leading-relaxed" style={{ color: 'var(--text-2)' }}>
+                {runnerUp.runner_up_reason}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Close */}
         <button
           onClick={onClose}
-          className="text-xs text-gray-400 underline"
+          className="w-full mt-5 py-3 rounded-xl text-[13px] font-semibold"
+          style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}
         >
           Close
         </button>
       </div>
-
-      {/* Filter summary — expanded */}
-      <p className="text-sm text-gray-600 leading-relaxed mb-4">
-        {rec.filter_summary}
-      </p>
-
-      {/* Why it fits — detailed */}
-      <div className="mb-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">From that pool, here's why this ranked:</p>
-        <ul className="space-y-3">
-          {rec.why_it_fits.map((bullet, i) => (
-            <li key={i} className="flex gap-2 text-sm text-gray-700 leading-relaxed">
-              <span className="text-green-600 font-bold shrink-0">✓</span>
-              <span>{bullet}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* Uncertainty — detailed */}
-      {rec.uncertainty_flags.length > 0 && (
-        <div className="mb-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">What we're not sure about:</p>
-          <ul className="space-y-2">
-            {rec.uncertainty_flags.map((flag, i) => (
-              <li key={i} className="text-sm text-amber-700 leading-relaxed">— {flag}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Runner-up */}
-      {runnerUp && runnerUp.runner_up_reason && (
-        <div className="bg-gray-50 rounded-xl p-3 mt-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">The next-closest we considered:</p>
-          <p className="text-sm font-medium text-gray-800">
-            {runnerUp.job.title}{runnerUp.job.company_name ? ` at ${runnerUp.job.company_name}` : ''}
-          </p>
-          <p className="text-sm text-gray-500 mt-1 leading-relaxed">
-            {runnerUp.runner_up_reason}
-          </p>
-        </div>
-      )}
     </div>
   )
 }

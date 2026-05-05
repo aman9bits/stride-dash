@@ -2,97 +2,74 @@
 
 import { useState } from 'react'
 
-const DISMISS_REASONS = [
-  'Pay too low',
-  'Company too big',
-  'Wrong function',
-  'Too senior / too junior',
-  'Already know this company',
-  'Location doesn\'t work',
+const REASONS = [
+  'Too early stage', 'Too big a company', 'Salary likely low',
+  'Wrong domain', 'Location', 'Skills mismatch', 'Something else',
 ]
 
 interface Props {
   onConfirm: (reason: string) => void
   onCancel: () => void
   isLoading: boolean
+  alreadyDismissed?: boolean
 }
 
-export default function DismissChips({ onConfirm, onCancel, isLoading }: Props) {
+export default function DismissChips({ onConfirm, onCancel, isLoading, alreadyDismissed }: Props) {
   const [selected, setSelected] = useState<string | null>(null)
-  const [other, setOther] = useState('')
-  const [showOther, setShowOther] = useState(false)
 
-  function handleChip(reason: string) {
-    if (reason === 'Other') {
-      setShowOther(true)
-      setSelected(null)
-    } else {
-      setShowOther(false)
-      setSelected(reason)
-    }
+  if (alreadyDismissed) {
+    return (
+      <div className="px-4 pb-4">
+        <div className="text-[11px] font-medium pt-3 mb-2" style={{ color: 'var(--text-3)' }}>What was off?</div>
+        <div className="flex flex-wrap gap-2">
+          {REASONS.map(r => (
+            <button key={r}
+              className="text-[12px] font-medium rounded-full px-3 py-1.5 border"
+              style={{ background: 'transparent', borderColor: 'var(--border-b)', color: 'var(--text-3)' }}
+              disabled>
+              {r}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
   }
-
-  function handleConfirm() {
-    const reason = showOther ? other.trim() : selected
-    if (!reason) return
-    onConfirm(reason)
-  }
-
-  const canConfirm = showOther ? other.trim().length > 0 : selected !== null
 
   return (
-    <div className="mt-4">
-      <p className="text-xs text-gray-500 mb-3">What's off? (helps us improve)</p>
-      <div className="flex flex-wrap gap-2 mb-3">
-        {DISMISS_REASONS.map(reason => (
-          <button
-            key={reason}
-            onClick={() => handleChip(reason)}
-            className={`text-xs rounded-full px-3 py-1.5 border transition-colors ${
-              selected === reason
-                ? 'border-gray-900 bg-gray-900 text-white'
-                : 'border-gray-200 text-gray-600 bg-white'
-            }`}
-          >
-            {reason}
-          </button>
-        ))}
-        <button
-          onClick={() => handleChip('Other')}
-          className={`text-xs rounded-full px-3 py-1.5 border transition-colors ${
-            showOther
-              ? 'border-gray-900 bg-gray-900 text-white'
-              : 'border-gray-200 text-gray-600 bg-white'
-          }`}
-        >
-          Other
-        </button>
+    <div className="px-4 pb-4">
+      <div className="text-[11px] font-medium pt-3 mb-2.5" style={{ color: 'var(--text-3)' }}>
+        What was off? (helps us improve)
       </div>
-
-      {showOther && (
-        <input
-          type="text"
-          value={other}
-          onChange={e => setOther(e.target.value)}
-          placeholder="Tell us what's off..."
-          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm mb-3 focus:outline-none focus:border-gray-400 bg-gray-50"
-          autoFocus
-        />
-      )}
-
+      <div className="flex flex-wrap gap-2 mb-3">
+        {REASONS.map(r => {
+          const active = selected === r
+          return (
+            <button key={r}
+              onClick={() => setSelected(prev => prev === r ? null : r)}
+              className="text-[12px] font-medium rounded-full px-3 py-1.5 border transition-all"
+              style={{
+                background: active ? 'var(--accent-dim)' : 'transparent',
+                borderColor: active ? 'var(--accent)' : 'var(--border-b)',
+                color: active ? 'var(--accent)' : 'var(--text-2)',
+              }}>
+              {r}
+            </button>
+          )
+        })}
+      </div>
       <div className="flex gap-2">
         <button
-          onClick={handleConfirm}
-          disabled={!canConfirm || isLoading}
-          className="flex-1 bg-gray-900 text-white rounded-xl py-2.5 text-sm font-medium disabled:opacity-40 active:scale-95 transition-transform"
-        >
-          {isLoading ? 'Dismissing...' : 'Dismiss'}
+          onClick={() => onConfirm(selected ?? 'No reason given')}
+          disabled={isLoading}
+          className="flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-opacity disabled:opacity-40"
+          style={{ background: 'var(--accent)', color: '#060C1A' }}>
+          {isLoading ? 'Dismissing…' : 'Confirm dismiss'}
         </button>
         <button
           onClick={onCancel}
           disabled={isLoading}
-          className="px-4 border border-gray-200 text-gray-600 rounded-xl py-2.5 text-sm"
-        >
+          className="px-4 py-2.5 rounded-xl text-[13px] font-medium"
+          style={{ border: '1px solid var(--border-b)', color: 'var(--text-2)' }}>
           Cancel
         </button>
       </div>

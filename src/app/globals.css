@@ -2,11 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg:          #070C1B;
+  --surface:     #0D1528;
+  --surface-2:   #111E38;
+  --border:      #1A2840;
+  --border-b:    #243657;
+  --accent:      #B8FF47;
+  --accent-dim:  rgba(184,255,71,0.10);
+  --orange:      #FF8C42;
+  --orange-dim:  rgba(255,140,66,0.10);
+  --red:         #FF4D6D;
+  --red-dim:     rgba(255,77,109,0.10);
+  --blue:        #5B8EFF;
+  --blue-dim:    rgba(91,142,255,0.10);
+  --text-1:      #EDF2FF;
+  --text-2:      #8A9EC5;
+  --text-3:      #3D4F70;
+}
+
 @layer base {
-  html {
-    -webkit-tap-highlight-color: transparent;
-  }
+  html { -webkit-tap-highlight-color: transparent; }
   body {
-    @apply min-h-screen;
+    background: #020610;
+    color: var(--text-1);
+    @apply min-h-screen antialiased;
   }
 }
+
+/* Scrollbar hiding */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 0.8; }
+}
+.animate-shimmer { animation: shimmer 1.6s ease-in-out infinite; }
+
+/* Counter easing */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.4s ease forwards; }
