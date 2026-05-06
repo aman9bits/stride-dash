@@ -7,14 +7,14 @@ export async function GET(request: NextRequest) {
   const token = url.searchParams.get('state') // invite token passed via OAuth state
 
   if (!code) {
-    return NextResponse.redirect(new URL('/invite/start', request.url))
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
   const supabase = await createServerSupabaseClient()
   const { data: { user }, error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error || !user) {
-    return NextResponse.redirect(new URL('/invite/start?error=auth', request.url))
+    return NextResponse.redirect(new URL('/login?error=auth', request.url))
   }
 
   // Check if candidate profile already exists

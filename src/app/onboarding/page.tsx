@@ -6,7 +6,7 @@ export default async function OnboardingPage() {
   const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) redirect('/invite/start')
+  if (!user) redirect('/login')
 
   const { data: candidate } = await supabaseAdmin
     .from('candidates')
@@ -14,7 +14,7 @@ export default async function OnboardingPage() {
     .eq('auth_user_id', user.id)
     .single()
 
-  if (!candidate) redirect('/invite/start')
+  if (!candidate) redirect('/login')
   if (candidate.onboarding_complete) redirect('/home')
 
   return <OnboardingChat candidate={candidate} />
