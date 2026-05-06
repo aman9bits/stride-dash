@@ -218,7 +218,7 @@ export default function RecommendationCard({ rec, job, runnerUp, candidateId }: 
       )}
 
       {/* Expanded body */}
-      {isExpanded && state !== 'ask_why' && state !== 'applying' && (
+      {isExpanded && state !== 'ask_why' && (
         <div style={{ borderTop: '1px solid var(--border)' }}>
           {/* Why it fits */}
           <div className="px-4 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
