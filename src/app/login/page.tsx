@@ -1,5 +1,5 @@
-import LandingPage from '@/components/auth/LandingPage'
+import Tour from '@/components/auth/Tour'
 
 export default function LoginPage() {
-  return <LandingPage email={null} token={null} />
+  return <Tour />
 }

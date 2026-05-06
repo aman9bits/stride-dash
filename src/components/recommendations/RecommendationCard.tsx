@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Recommendation, Job } from '@/types'
 import DismissChips from './DismissChips'
 import AskWhyView from './AskWhyView'
+import ApplySheet from './ApplySheet'
 
 interface Props {
   rec: Recommendation
@@ -12,27 +13,28 @@ interface Props {
   candidateId: string
 }
 
-type CardState = 'default' | 'expanded' | 'dismissing' | 'dismissed' | 'applied' | 'ask_why'
+type CardState = 'default' | 'expanded' | 'undoable' | 'dismissing' | 'dismissed' | 'applying' | 'ask_why'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getCompanyBadge(type: string | null): { label: string; style: React.CSSProperties } {
+function getCompanyBadge(type: string | null, stage?: string | null): { label: string; style: React.CSSProperties } {
+  const stageLabel = stage ? ` · ${stage}` : ''
   const map: Record<string, { label: string; style: React.CSSProperties }> = {
-    startup: { label: 'Startup', style: { background: 'rgba(255,140,66,0.12)', color: 'var(--orange)' } },
-    product: { label: 'Product co', style: { background: 'rgba(91,142,255,0.12)', color: 'var(--blue)' } },
-    mnc:     { label: 'MNC', style: { background: 'rgba(138,158,197,0.12)', color: 'var(--text-2)' } },
-    service_co: { label: 'Services co', style: { background: 'rgba(138,158,197,0.12)', color: 'var(--text-2)' } },
-    unknown: { label: 'Stage unknown', style: { background: 'rgba(138,158,197,0.08)', color: 'var(--text-3)' } },
+    startup:    { label: `Startup${stageLabel}`,   style: { background: 'rgba(255,140,66,0.12)', color: 'var(--orange)' } },
+    product:    { label: 'Product company',         style: { background: 'rgba(91,142,255,0.12)', color: 'var(--blue)' } },
+    mnc:        { label: 'MNC',                     style: { background: 'rgba(138,158,197,0.12)', color: 'var(--text-2)' } },
+    service_co: { label: 'Services co',             style: { background: 'rgba(138,158,197,0.12)', color: 'var(--text-2)' } },
+    unknown:    { label: 'Stage unknown',           style: { background: 'rgba(138,158,197,0.08)', color: 'var(--text-3)' } },
   }
   return map[type ?? 'unknown'] ?? map.unknown
 }
 
 function getJobAge(days: number | null): { text: string; stale: boolean } | null {
   if (!days || days <= 14) return null
-  if (days < 30) return { text: `${Math.round(days / 7)}w ago`, stale: false }
-  if (days < 60) return { text: `Open ${Math.round(days / 7)}w — ask why`, stale: true }
-  if (days < 90) return { text: `Open ${Math.floor(days / 30)}+ mo — slow process`, stale: true }
-  return { text: `Open ${Math.floor(days / 30)}+ mo — investigate first`, stale: true }
+  if (days < 30) return { text: `${Math.round(days / 7)} weeks ago`, stale: false }
+  if (days < 60) return { text: `Open ${Math.round(days / 7)} weeks — ask why it's still open`, stale: true }
+  if (days < 90) return { text: `Open ${Math.floor(days / 30)}+ months — slow process or high bar`, stale: true }
+  return { text: `Open ${Math.floor(days / 30)}+ months — worth investigating first`, stale: true }
 }
 
 function getLocation(job: Job): string {
@@ -44,7 +46,19 @@ function getLocation(job: Job): string {
 
 export default function RecommendationCard({ rec, job, runnerUp, candidateId }: Props) {
   const [state, setState] = useState<CardState>('default')
+  const [hasApplied, setHasApplied] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const prevStateRef = useRef<CardState>('default')
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 5-second undo window before dismiss chips appear
+  useEffect(() => {
+    if (state !== 'undoable') return
+    undoTimerRef.current = setTimeout(() => setState('dismissing'), 5000)
+    return () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    }
+  }, [state])
 
   async function callReaction(
     reaction_type: 'apply' | 'dismiss' | 'ask_why',
@@ -66,56 +80,84 @@ export default function RecommendationCard({ rec, job, runnerUp, candidateId }: 
     })
   }
 
-  async function handleApply() {
-    setIsLoading(true)
-    await callReaction('apply')
-    setIsLoading(false)
-    setState('applied')
+  function handleDismissStart() {
+    prevStateRef.current = state
+    setState('undoable')
   }
 
-  async function handleDismiss(reason: string) {
+  function handleUndoDismiss() {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    setState(prevStateRef.current === 'expanded' ? 'expanded' : 'default')
+  }
+
+  async function handleDismissConfirm(reason: string) {
     setIsLoading(true)
     await callReaction('dismiss', { dismiss_reason: reason })
     setIsLoading(false)
     setState('dismissed')
   }
 
+  function handleApplyStart() {
+    prevStateRef.current = state
+    setState('applying')
+  }
+
+  async function handleApplyConfirm() {
+    setIsLoading(true)
+    await callReaction('apply')
+    setIsLoading(false)
+    setHasApplied(true)
+    setState(prevStateRef.current === 'expanded' ? 'expanded' : 'default')
+  }
+
+  function handleApplyClose() {
+    setState(prevStateRef.current === 'expanded' ? 'expanded' : 'default')
+  }
+
   async function handleAskWhy() {
     await callReaction('ask_why')
+    prevStateRef.current = state
     setState('ask_why')
   }
 
-  const badge = getCompanyBadge(job.company_type)
+  const badge = getCompanyBadge(job.company_type, job.stage)
   const ageInfo = getJobAge(job.job_age_days)
   const previewText = rec.why_it_fits[0] ?? ''
   const isExpanded = state === 'expanded' || state === 'ask_why'
+  const locationLine = [
+    job.company_name ?? 'Company undisclosed',
+    getLocation(job),
+    job.role_level ?? null,
+  ].filter(Boolean).join(' · ')
+
+  // ─── Undo state ────────────────────────────────────────────────────────────
+  if (state === 'undoable') {
+    return (
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between px-4 py-3.5">
+          <span className="text-[13px] line-through" style={{ color: 'var(--text-3)' }}>
+            {job.title}{job.company_name ? ` at ${job.company_name}` : ''}
+          </span>
+          <button
+            onClick={handleUndoDismiss}
+            className="text-[12px] font-semibold flex-shrink-0 ml-3"
+            style={{ color: 'var(--accent)' }}
+          >
+            Undo
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   // ─── Dismissed ─────────────────────────────────────────────────────────────
   if (state === 'dismissed') {
     return (
       <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between px-4 py-3.5">
-          <span className="text-sm line-through" style={{ color: 'var(--text-3)' }}>
+        <div className="flex items-center px-4 py-3.5">
+          <span className="text-[13px] line-through" style={{ color: 'var(--text-3)' }}>
             {job.title}{job.company_name ? ` at ${job.company_name}` : ''}
           </span>
-        </div>
-        {state === 'dismissed' && (
-          <DismissChips onConfirm={() => {}} onCancel={() => {}} isLoading={false} alreadyDismissed />
-        )}
-      </div>
-    )
-  }
-
-  // ─── Applied ───────────────────────────────────────────────────────────────
-  if (state === 'applied') {
-    return (
-      <div className="rounded-2xl p-4" style={{ background: 'var(--surface)', border: '1px solid rgba(184,255,71,0.2)' }}>
-        <div className="text-sm font-semibold mb-0.5" style={{ color: 'var(--accent)' }}>✓ Marked as applied</div>
-        <div className="text-sm" style={{ color: 'var(--text-2)' }}>
-          {job.title}{job.company_name ? ` at ${job.company_name}` : ''}
-        </div>
-        <div className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--text-3)' }}>
-          Apply directly on the company's site. We won't show this role again.
         </div>
       </div>
     )
@@ -130,10 +172,13 @@ export default function RecommendationCard({ rec, job, runnerUp, candidateId }: 
         boxShadow: isExpanded ? '0 0 0 1px rgba(184,255,71,0.08), 0 8px 24px rgba(0,0,0,0.4)' : 'none',
       }}
     >
-      {/* Card top — always visible, tappable to expand */}
+      {/* Card top — tappable to expand/collapse */}
       <div
         className="px-4 pt-4 pb-0 cursor-pointer select-none"
-        onClick={() => setState(s => s === 'default' ? 'expanded' : s === 'expanded' ? 'default' : s)}
+        onClick={() => {
+          if (state === 'default') setState('expanded')
+          else if (state === 'expanded') setState('default')
+        }}
       >
         <div className="flex items-center justify-between mb-2">
           <span
@@ -152,12 +197,12 @@ export default function RecommendationCard({ rec, job, runnerUp, candidateId }: 
           {job.title}
         </div>
         <div className="text-[12px] mb-3" style={{ color: 'var(--text-2)' }}>
-          {job.company_name ?? 'Company undisclosed'} · {getLocation(job)}
+          {locationLine}
         </div>
       </div>
 
       {/* Preview blurb — collapsed only */}
-      {!isExpanded && previewText && (
+      {state === 'default' && previewText && (
         <div
           className="px-4 pb-3 cursor-pointer"
           style={{ borderBottom: '1px solid var(--border)' }}
@@ -173,7 +218,7 @@ export default function RecommendationCard({ rec, job, runnerUp, candidateId }: 
       )}
 
       {/* Expanded body */}
-      {isExpanded && state !== 'ask_why' && (
+      {isExpanded && state !== 'ask_why' && state !== 'applying' && (
         <div style={{ borderTop: '1px solid var(--border)' }}>
           {/* Why it fits */}
           <div className="px-4 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -221,35 +266,44 @@ export default function RecommendationCard({ rec, job, runnerUp, candidateId }: 
         </div>
       )}
 
-      {/* Ask Why bottom sheet overlay */}
+      {/* Ask Why inline view */}
       {state === 'ask_why' && (
         <AskWhyView rec={rec} job={job} runnerUp={runnerUp} onClose={() => setState('expanded')} />
       )}
 
-      {/* Dismiss chips (inline after dismiss) */}
+      {/* Apply sheet inline view */}
+      {state === 'applying' && (
+        <ApplySheet
+          job={job}
+          onConfirm={handleApplyConfirm}
+          onClose={handleApplyClose}
+          isLoading={isLoading}
+        />
+      )}
+
+      {/* Dismiss chips */}
       {state === 'dismissing' && (
         <div style={{ borderTop: '1px solid var(--border)' }}>
-          <DismissChips
-            onConfirm={handleDismiss}
-            onCancel={() => setState(isExpanded ? 'expanded' : 'default')}
-            isLoading={isLoading}
-          />
+          <DismissChips onConfirm={handleDismissConfirm} isLoading={isLoading} />
         </div>
       )}
 
       {/* Action buttons */}
-      {state !== 'dismissing' && state !== 'ask_why' && (
+      {state !== 'dismissing' && state !== 'ask_why' && state !== 'applying' && (
         <div className="flex gap-2 px-3.5 py-3">
           <button
-            onClick={handleApply}
+            onClick={hasApplied ? undefined : handleApplyStart}
             disabled={isLoading}
-            className="flex-1 py-2.5 rounded-[10px] text-[13px] font-bold transition-opacity disabled:opacity-50"
-            style={{ background: 'var(--accent)', color: '#060C1A' }}
+            className="flex-1 py-2.5 rounded-[10px] text-[13px] font-bold transition-all disabled:opacity-50"
+            style={hasApplied
+              ? { background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid rgba(184,255,71,0.3)' }
+              : { background: 'var(--accent)', color: '#060C1A' }
+            }
           >
-            Apply →
+            {hasApplied ? '✓ Applied' : 'Apply →'}
           </button>
           <button
-            onClick={() => setState('dismissing')}
+            onClick={handleDismissStart}
             disabled={isLoading}
             className="flex-1 py-2.5 rounded-[10px] text-[13px] font-semibold transition-colors disabled:opacity-50"
             style={{ background: 'transparent', border: '1px solid var(--border-b)', color: 'var(--text-2)' }}

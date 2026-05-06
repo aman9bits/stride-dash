@@ -67,6 +67,9 @@ export interface Job {
   published_date: string | null
   company_name: string | null
   company_type: CompanyType
+  stage: string | null           // e.g. "Series A", "Series C", "Post-IPO"
+  role_level: string | null      // e.g. "IC", "Lead", "Manager"
+  job_url: string | null         // direct application URL
   locations: string[]
   is_pan_india: boolean
   job_age_days: number | null

@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { track } from '@/lib/posthog'
 
@@ -10,6 +11,7 @@ interface Props {
 
 export default function LandingPage({ email, token }: Props) {
   const supabase = createClient()
+  const [magicLinkSent, setMagicLinkSent] = useState(false)
 
   async function handleGoogleSignIn() {
     track('auth_started', { method: 'google' })
@@ -31,7 +33,7 @@ export default function LandingPage({ email, token }: Props) {
         emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback${token ? `?state=${token}` : ''}`,
       },
     })
-    alert(`Check ${email} for your sign-in link.`)
+    setMagicLinkSent(true)
   }
 
   return (
@@ -73,7 +75,7 @@ export default function LandingPage({ email, token }: Props) {
             Continue with Google
           </button>
 
-          {email && (
+          {email && !magicLinkSent && (
             <button
               onClick={handleMagicLink}
               className="w-full text-center text-[13px] py-2.5 transition-colors active:opacity-70"
@@ -82,11 +84,26 @@ export default function LandingPage({ email, token }: Props) {
               Use email instead ({email})
             </button>
           )}
+
+          {magicLinkSent && (
+            <div className="text-center py-2.5">
+              <div className="text-[13px] font-semibold" style={{ color: 'var(--accent)' }}>
+                ✓ Check {email} for your sign-in link
+              </div>
+              <div className="text-[11px] mt-1" style={{ color: 'var(--text-3)' }}>
+                Check spam if it doesn't arrive in 30 seconds
+              </div>
+            </div>
+          )}
         </div>
 
-        <p className="mt-10 text-[11px] text-center" style={{ color: 'var(--text-3)' }}>
-          Early access · No spam · Unsubscribe anytime
-        </p>
+        {/* Legal */}
+        <div className="text-center text-[11px] leading-relaxed mt-4" style={{ color: 'var(--text-3)' }}>
+          By continuing you agree to our{' '}
+          <a href="/terms" style={{ color: 'var(--text-2)' }}>Terms</a>{' '}
+          and{' '}
+          <a href="/privacy" style={{ color: 'var(--text-2)' }}>Privacy Policy</a>
+        </div>
       </div>
     </div>
   )
